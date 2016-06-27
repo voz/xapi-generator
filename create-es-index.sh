@@ -54,19 +54,25 @@ PUT actions/action/_mapping
                   "type": "string",
                   "index": "not_analyzed"
                },
-               "displayName": {
+               "name": {
                   "type": "string",
                   "index": "not_analyzed"
-               },
-               "image": {
-                  "type": "string"
                },
                "objectType": {
                   "type": "string",
                   "index": "not_analyzed"
                },
-               "url": {
-                  "type": "string"
+               "definition": {
+                  "properties": {
+                     "name": {
+                        "properties" : {
+                           "en-US": {
+                              "type": "string",
+                              "index": "not_analyzed"
+                           }
+                        }
+                     }
+                  }
                }
             }
          },

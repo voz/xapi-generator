@@ -17,9 +17,17 @@
  * Set up key parameters
  */
 
-var esHostUrl = 'https://admin:lasi2016@a32df3a1a322b02cdb3d411289e033c4.us-east-1.aws.found.io:9243';
-var maxLocationsPerUser = 4;
-var maxVerbsPerUser = 7;
+var esHostUrl = 'https://admin:lasi2016@3531ac3758f84d04f963908ae3840f5c.us-east-1.aws.found.io:9243';
+var usersCount = 200;
+var objectsCount = 500;
+var locationsCount = 20;
+
+var locationsPerUser = 4;
+var verbsPerUser = 7;
+var objectsPerUser = 7;
+var usersPerUser = 5;
+
+var maxWaitBetweenActions = 1000;
 
 /**
  * Require packages
@@ -28,6 +36,8 @@ var maxVerbsPerUser = 7;
 var _ = require('lodash');
 var winston = require('winston');
 var elasticsearch = require('elasticsearch');
+var Chance = require('chance');
+var chance = new Chance();
 
 /**
  * Set up sets of values to randomly select from
@@ -37,8 +47,7 @@ winston.info('Starting generation of random users, locations, verbs and objects'
 
 // xAPI verbs copied from:
 // https://github.com/adlnet/xAPIVerbs/blob/master/verbs.js
-
-var xAPIVerbs = {
+var xAPIVerbsObj = {
   "abandoned" : {
      "id" : "https://w3id.org/xapi/adl/verbs/abandoned",
      "display" : {"en-US" : "abandoned",
@@ -227,25 +236,106 @@ var xAPIVerbs = {
      "id" : "https://w3id.org/xapi/adl/verbs/waived",
      "display" : {"en-US" : "waived"}
   },
-
   // Two verbs made up by me to demonstrate user-user interaction analysis
   "messaged" : {
      "id" : "https://vozniuk.com/xapi/adl/verbs/messaged",
      "display" : {"en-US" : "messaged"}
   },
-  "invited" : {
-     "id" : "https://vozniuk.com/xapi/adl/verbs/invited",
-     "display" : {"en-US" : "invited"}
+  // "invited" : {
+  //    "id" : "https://vozniuk.com/xapi/adl/verbs/invited",
+  //    "display" : {"en-US" : "invited"}
+  // },
+  "mentioned" : {
+     "id" : "https://vozniuk.com/xapi/adl/verbs/mentioned",
+     "display" : {"en-US" : "mentioned"}
   }
 };
 
-// Generate an array of users
+var xAPIVerbsArray = _.keys(xAPIVerbsObj); // we need an array for predefined order
 
 // Build an array of realistic locations and IPs
+var locations = [];
 
-// Assign to each user 2-3 locations (with IPs) she would typically interact from
+for (var i = 0; i < locationsCount; i++) {
+  var newLocation = {
+    ipAddress : chance.ip(),
+    location : {
+      lon: chance.longitude(),
+      lat: chance.latitude()
+    },
+    city : chance.city(),
+    countryCode : chance.country(),
+    countryName : chance.country({ full: true })
+  }
+
+  locations.push(newLocation);
+}
+
 
 // Generate an array of objects (maybe using existing items as a basis)
+var objects = [];
+
+for (var i = 0; i < objectsCount; i++) {
+  var newObj = {
+      id: chance.hash(),
+      definition: {
+        name: {
+          'en-US': chance.file()
+        },
+        description: {
+          'en-US': chance.paragraph()
+        }
+      },
+      objectType: "Media"
+    }
+
+  objects.push(newObj);
+}
+
+// Generate an array of users
+var users = [];
+
+for (var i = 0; i < usersCount; i++) {
+  var newUser = {
+    id: chance.hash(),
+    name: chance.name(),
+    mbox: chance.email(),
+    locations: [],
+    verbs: [],
+    objects: [],
+    users: []
+  }
+
+  // We skew the random distributions below by doing Math.pow()
+  // to make the data more "interesting" for exploration
+
+  // Assign to each user locations (with IPs) she would typically interact from
+  for (var j = 0; j < locationsPerUser; j++) {
+    var rndLocationNmb = Math.floor(Math.pow(Math.random(), 2)*locations.length);
+
+    newUser.locations.push(rndLocationNmb);
+  }
+
+  // Assign to each user types of interaction she would typically do
+  for (var j = 0; j < verbsPerUser; j++) {
+    var rndVerbNmb = Math.floor(Math.pow(Math.random(), 2)*xAPIVerbsArray.length);
+    newUser.verbs.push(rndVerbNmb);
+  }
+
+  // Assign to each user objects she would typically interact with
+  for (var j = 0; j < objectsPerUser; j++) {
+    var rndObjNmb = Math.floor((1-Math.pow(Math.random(), 2))*objects.length);
+    newUser.objects.push(rndObjNmb);
+  }
+
+  // Assign to each user other users she interacts with
+  for (var j = 0; j < usersPerUser; j++) {
+    var rndObjNmb = Math.floor((1-Math.pow(Math.random(), 2))*users.length);
+    newUser.users.push(rndObjNmb);
+  }
+
+  users.push(newUser);
+}
 
 // At this point we have users, verbs, objects and locations for the context
 
@@ -280,42 +370,69 @@ var xAPIVerbs = {
 //     }
 // }
 
+var getGeneratedAction = function () {
+  // Pick a random user
+  var userNmb = Math.floor(Math.pow(Math.random(), 2)*users.length);
+  var curActorObj = users[userNmb];
 
-var actionJson = {
-    timestamp: new Date(),
-    actor: {
-      name: 'Sally Glider',
-      mbox: 'mailto:sally@example.com'
-    },
-    verb: {
-      id: 'http://adlnet.gov/expapi/verbs/experienced',
-      display: {
-        'en-US': 'experienced'
-      }
-    },
-    object: {
-      id: 'http://example.com/activities/solo-hang-gliding',
-      definition: {
-        name: {
-          'en-US': 'Solo Hang Gliding'
-        }
-      }
-    },
-    context: {
-      ipAddress: '127.0.0.1',
-      location: {
-        lon: 6.6666700,
-        lat: 46.533330
-      },
-      city: 'Lausanne',
-      countryCode: 'CH',
-      countryName: 'Switzerland'
-    }
+  // Pick a random verb of user verbs
+  var verbNmb = Math.floor(Math.pow(Math.random(), 2)*curActorObj.verbs.length);
+  var curVerb = xAPIVerbsArray[curActorObj.verbs[verbNmb]];
+  var curVerbObj = xAPIVerbsObj[curVerb];
+
+  // Pick a random object or user objects
+  if (curVerb === 'messaged' || curVerb === 'mentioned') {
+    var objNmb = Math.floor(Math.pow(Math.random(), 2)*curActorObj.users.length);
+    var curUserObj = users[curActorObj.users[objNmb]]
+    var curObject = {
+      id: curUserObj.id,
+      name: curUserObj.name,
+      objectType: 'User'
+    };
+  } else {
+    var objNmb = Math.floor(Math.pow(Math.random(), 2)*curActorObj.objects.length);
+    var curObject = objects[curActorObj.objects[objNmb]];
   }
+
+  // Pick a random context (ip location etc)
+  var locNmb = Math.floor(Math.pow(Math.random(), 2)*curActorObj.locations.length);
+  var curContext = locations[curActorObj.locations[locNmb]];
+
+  var actionJson = {
+      timestamp: new Date(),
+      actor: {
+        id: curActorObj.id,
+        name: curActorObj.name,
+        mbox: curActorObj.mbox
+      },
+      verb: curVerbObj,
+      object: curObject,
+      context: curContext
+    }
+
+  return actionJson;
+}
 
 /**
  * Establish an Elasticsearch connection
  */
+var generateAndSendActions = function () {
+  var actionJson = getGeneratedAction();
+  winston.info('Putting object into Elasticsearch: ', JSON.stringify(actionJson));
+
+  esClient.create({
+    index: 'actions',
+    type: 'action',
+    body: actionJson
+  }).then(function (resp) {
+    winston.info('Object was successfully put into Elasticsearch with response: ', resp);
+
+    // schedule the next action
+    setTimeout(generateAndSendActions, Math.random()*maxWaitBetweenActions);
+  }, function (err) {
+    return winston.error('An error occurred when creating an action in Elasticsearch: ', err);
+  });
+}
 
 var esClient = new elasticsearch.Client({
       host: esHostUrl
@@ -330,27 +447,11 @@ esClient.ping({
   hello: 'elasticsearch!'
 }, function (err) {
   if (err) {
-    winston.error('Elasticsearch connection cannot be established. ' + err);
+    return winston.error('Elasticsearch connection cannot be established. ' + err);
   }
 
   winston.info('Elasticsearch connection to ' + esHostUrl +
     ' was established successfully');
 
-    winston.info('Putting object into Elasticsearch: ', JSON.stringify(actionJson));
-
-  // while (true) {
-    // TODO: call function to generate mock data
-
-    esClient.create({
-      index: 'actions',
-      type: 'action',
-      body: actionJson
-    }).then(function (resp) {
-      winston.info('Object was successfully put into Elasticsearch with response: ', resp);
-    }, function (err) {
-      winston.error('An error occurred when creating an action in Elasticsearch: ', err);
-    });
-
-    // TODO: wait a bit before the next request
-  // }
+  generateAndSendActions();
 });
